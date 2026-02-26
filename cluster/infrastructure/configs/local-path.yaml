@@ -1,0 +1,31 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: local-path-provisioner
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://github.com/rancher/local-path-provisioner
+  ref:
+    tag: v0.0.30
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: local-path-provisioner
+  namespace: flux-system
+spec:
+  interval: 24h
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: local-path-provisioner
+  path: deploy
+  patches:
+    - target:
+        kind: StorageClass
+        name: local-path
+      patch: |
+        - op: add
+          path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
+          value: "true"

@@ -1,0 +1,23 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: gateway-api-nginx
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: https://github.com/nginx/nginx-gateway-fabric
+  ref:
+    tag: v2.4.2
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: gateway-api-crds
+  namespace: flux-system
+spec:
+  interval: 24h
+  prune: false
+  sourceRef:
+    kind: GitRepository
+    name: gateway-api-nginx
+  path: config/crd/gateway-api/standard

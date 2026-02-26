@@ -740,3 +740,12 @@ kubectl logs <pod-name> -n <namespace> -f
 # Check what kubeadm set up
 sudo cat /etc/kubernetes/manifests/kube-apiserver.yaml | grep -E 'image:|--'
 ```
+
+---
+
+## Next Step: GitOps with Flux
+
+All the components installed in this guide can be managed declaratively via Git
+using Flux CD. See **[04-setup-gitops.md](04-setup-gitops.md)** to set up GitOps —
+every Helm release and manifest from this guide is declared as code in the `cluster/`
+directory, so you can push changes and Flux reconciles the cluster automatically.
