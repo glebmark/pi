@@ -1,4 +1,4 @@
-# Home k8s cluster based on bare-metal Raspberry Pi
+## Home k8s cluster based on bare-metal Raspberry Pi
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -18,7 +18,7 @@
 │  │    ├── Cilium (CNI + kube-proxy replacement)    │    │
 │  │    └── MetalLB (L2 LoadBalancer)                │    │
 │  │                                                 │    │
-│  │  Traffic:                                       │    │
+│  │  Ingress:                                       │    │
 │  │    ├── Gateway API CRDs                         │    │
 │  │    └── Nginx Gateway Fabric (Gateway impl.)     │    │
 │  │                                                 │    │
