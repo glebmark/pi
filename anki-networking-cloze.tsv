@@ -1,0 +1,41 @@
+The `.local` domain resolution uses {{c1::mDNS (Multicast DNS)}}, not a traditional DNS server.
+On Raspberry Pi OS, mDNS is provided by the {{c1::Avahi}} daemon, which broadcasts the hostname on {{c2::UDP port 5353}}.
+mDNS works automatically as long as both devices are on the {{c1::same subnet}} — no router configuration needed.
+On Windows 10+, mDNS resolution is provided by the {{c1::Bonjour}} service.
+A Linux {{c1::bridge}} is a software Layer {{c2::2}} switch that forwards Ethernet frames between interfaces based on {{c3::MAC addresses}}.
+{{c1::ARP}} maps {{c2::IP addresses}} to {{c3::MAC addresses}} on a local network using broadcast requests and unicast replies.
+In CIDR notation, /24 means the first {{c1::24 bits}} are the network portion, leaving {{c2::8 bits}} ({{c3::256}} addresses) for hosts.
+A {{c1::default gateway}} is the router IP where a device sends all traffic destined for {{c2::outside its local subnet}}.
+{{c1::NAT}} (Network Address Translation) rewrites {{c2::source or destination IP addresses}} in packets as they pass through a router.
+{{c1::SNAT}} changes the {{c2::source}} IP of outgoing packets. {{c3::DNAT}} changes the {{c4::destination}} IP of incoming packets.
+{{c1::MASQUERADE}} in iptables is a type of SNAT that dynamically uses the {{c2::outgoing interface's current IP}} — useful when the IP is assigned by DHCP.
+A {{c1::DHCP reservation}} is a router-side setting that always assigns the same IP to a device based on its {{c2::MAC address}}.
+DHCP 4-step handshake: {{c1::DISCOVER}} → {{c2::OFFER}} → {{c3::REQUEST}} → {{c4::ACK}}.
+A DHCP {{c1::lease}} is a time-limited IP assignment. The client renews at {{c2::50%}} and {{c3::87.5%}} of the lease duration.
+NTP stratum 0 is an {{c1::atomic clock or GPS receiver}}. Stratum 1 connects directly to stratum 0. Each additional stratum is one hop {{c2::further from the reference}}.
+A {{c1::MAC address}} is a {{c2::48-bit}} hardware address burned into a NIC (e.g., d8:3a:dd:66:ec:3e), used for {{c3::Layer 2}} communication.
+The 7 OSI layers (bottom to top): {{c1::Physical}}, {{c2::Data Link}}, {{c3::Network}}, {{c4::Transport}}, Session, Presentation, {{c5::Application}}.
+Layer 1 ({{c1::Physical}}) transmits {{c2::raw bits}} over a medium — electrical signals, light pulses, or {{c3::radio waves}}.
+Layer 2 ({{c1::Data Link}}) uses {{c2::MAC addresses}} to forward frames between directly connected nodes. Protocols: {{c3::Ethernet}}, WiFi, {{c4::ARP}}.
+Layer 3 ({{c1::Network}}) routes packets across network boundaries using {{c2::IP addresses}}. {{c3::Routers}} operate at this layer.
+The key difference: L2 uses {{c1::MAC addresses}} for communication within a {{c2::single segment}}. L3 uses {{c3::IP addresses}} for communication across {{c4::different networks}}.
+Layer 4 ({{c1::Transport}}) provides end-to-end communication. {{c2::TCP}} = reliable + ordered. {{c3::UDP}} = fast + connectionless. {{c4::Ports}} distinguish services.
+Layer 7 ({{c1::Application}}) is closest to the user: {{c2::HTTP}}, {{c3::DNS}}, SSH, SMTP. Deals with application semantics.
+{{c1::L4 load balancing}} routes based on IP + port (fast, no payload inspection). {{c2::L7 load balancing}} routes based on application content like HTTP paths and headers (flexible, requires {{c3::proxy termination}}).
+{{c1::VXLAN}} (Virtual Extensible LAN) encapsulates Layer 2 frames in {{c2::UDP}} packets to create a virtual overlay network for pod-to-pod traffic across nodes.
+An {{c1::overlay}} network is built on top of the {{c2::underlay}} (physical network) by {{c3::encapsulating}} packets with additional headers.
+Overlay networking (VXLAN): {{c1::encapsulates}} pod traffic in UDP — works anywhere, adds {{c2::overhead}}. Direct routing: pod IPs are {{c3::natively routable}} — lower overhead, requires L3 support.
+{{c1::BGP}} (Border Gateway Protocol) is the L3 routing protocol that runs the internet — routers exchange {{c2::route announcements}} between {{c3::autonomous systems}}.
+Networking {{c1::control plane}} makes routing decisions (where should traffic go?). The {{c2::data plane}} actually forwards packets. In Envoy Gateway: the controller is control plane, {{c3::Envoy proxy}} is data plane.
+A {{c1::veth pair}} is two virtual Ethernet interfaces connected like a pipe — one end goes in the {{c2::pod's network namespace}}, the other in the {{c3::host namespace}}.
+{{c1::gRPC}} is a high-performance RPC framework that uses {{c2::Protocol Buffers}} for serialisation and {{c3::HTTP/2}} for transport.
+{{c1::ACME}} (Automated Certificate Management Environment) is the protocol used by {{c2::Let's Encrypt}} — the client proves {{c3::domain ownership}} via an HTTP or DNS challenge.
+A {{c1::self-signed}} certificate is signed by its own key (not trusted by default). A {{c2::CA-signed}} certificate is signed by a trusted CA (browsers trust it). Self-signed works for {{c3::internal/dev}} use.
+`nmap -sn` performs a {{c1::ping scan}} — discovers live hosts without {{c2::port scanning}}. Uses ARP on local subnets.
+`ip neigh show` displays the {{c1::ARP/NDP}} neighbor table. REACHABLE = recently confirmed, STALE = old, {{c2::FAILED}} = no response (IP likely free).
+A {{c1::gratuitous ARP}} is an unsolicited ARP reply broadcast to announce an IP-to-MAC mapping — used by {{c2::MetalLB}} to claim LoadBalancer IPs.
+An "(incomplete)" ARP entry means the device sent an ARP request but {{c1::never received a reply}} — the IP-to-MAC mapping could not be {{c2::resolved}}.
+Some WiFi routers (e.g., {{c1::Google WiFi}}) filter ARP responses for IPs not in their {{c2::DHCP table}}, preventing MetalLB L2 from working over {{c3::WiFi}}.
+A {{c1::secondary IP}} is an additional address on an interface. The kernel handles {{c2::ARP}} for all IPs. Added via `ip addr add` or `nmcli connection modify {{c3::+ipv4.addresses}}`.
+A {{c1::/32}} subnet mask means exactly {{c2::one address}} (host route), while {{c3::/24}} means 256 addresses (a network with subnet).
+The iptables {{c1::FORWARD}} chain processes packets being {{c2::routed through}} the machine — applies when Kubernetes forwards external traffic to pods via {{c3::DNAT}}.

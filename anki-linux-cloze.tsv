@@ -1,0 +1,78 @@
+Raspberry Pi OS Lite (64-bit) Trixie is based on {{c1::Debian 13}}.
+The Raspberry Pi 4 in 64-bit mode uses the {{c1::aarch64}} CPU architecture.
+To flash an SD card for Raspberry Pi, use the official tool called {{c1::Raspberry Pi Imager}}.
+In the Imager, select {{c1::Raspberry Pi OS Lite (64-bit)}} for a headless server with minimal footprint.
+During first boot, the Pi {{c1::resizes the filesystem}} to fill the entire SD card and {{c2::registers itself on the network via mDNS}}.
+To SSH into a Pi with hostname `rara`, use: {{c1::ssh ra@rara.local}}
+After re-flashing, SSH warns about changed host key. Fix with: {{c1::ssh-keygen -R rara.local}}
+To copy your SSH public key to the Pi: {{c1::ssh-copy-id}} ra@rara.local
+To generate an Ed25519 SSH key pair: ssh-keygen -t {{c1::ed25519}}
+The command {{c1::uname -m}} shows the CPU architecture (e.g. aarch64).
+The command {{c1::nmcli dev status}} shows the status of all network interfaces via NetworkManager.
+After copying SSH keys, you can disable password auth by setting {{c1::PasswordAuthentication no}} in {{c2::/etc/ssh/sshd_config}} and reloading sshd.
+On macOS, you can discover mDNS services with: {{c1::dns-sd}} -B _ssh._tcp local.
+To apply NetworkManager changes safely over SSH, use {{c1::sudo nmcli device reapply wlan0}} instead of connection down/up.
+Setting `ipv4.method` to {{c1::manual}} in NetworkManager disables {{c2::DHCP}} and uses only the statically configured address.
+{{c1::NetworkManager}} uses connection {{c2::profiles}} stored in /etc/NetworkManager/system-connections/. A device can have multiple profiles but only {{c3::one active}} at a time.
+Running multiple network managers (NetworkManager, {{c1::systemd-networkd}}, dhclient) simultaneously causes {{c2::conflicts}} — only one should be active.
+Raspberry Pi OS Trixie uses {{c1::zram}} swap by default — compressed {{c2::RAM-based}} swap, not the old dphys-swapfile.
+{{c1::zram}} is a Linux kernel module that creates compressed block devices in {{c2::RAM}}, trading {{c3::CPU}} for reduced memory pressure.
+The old Raspberry Pi swap manager {{c1::dphys-swapfile}} created a swap file on the {{c2::SD card}}. It was replaced by {{c3::zram}} in Trixie.
+The command {{c1::sudo swapoff -a}} immediately turns off all active swap.
+The command {{c1::swapon --show}} lists all active swap devices. No output means {{c2::no swap is active}}.
+Masking {{c1::swap.target}} with systemctl prevents {{c2::systemd}} from reactivating swap even after running swapoff.
+`systemctl mask` links the unit file to {{c1::/dev/null}}, completely preventing it from being started, unlike `disable` which only prevents {{c2::automatic startup at boot}}.
+A Linux {{c1::kernel module}} is code that can be loaded into the running kernel on demand, extending functionality without {{c2::rebooting}}.
+{{c1::modprobe}} resolves and loads module dependencies automatically, unlike {{c2::insmod}} which loads a single .ko file without dependency resolution.
+Kernel module files (.ko) are stored under {{c1::/lib/modules/$(uname -r)/}}, one directory per {{c2::kernel version}}.
+Kernel modules to load at boot are configured in files under {{c1::/etc/modules-load.d/}}. To load one immediately: {{c2::sudo modprobe <module>}}.
+{{c1::lsmod}} lists all currently loaded kernel modules with their size and {{c2::dependency count}}.
+The {{c1::overlay}} module provides {{c2::OverlayFS}} — a union filesystem that layers a writable "upper" layer over read-only "lower" layers for container images.
+Sysctl settings are persisted in files under {{c1::/etc/sysctl.d/}} and applied with {{c2::sudo sysctl --system}}.
+`sudo sysctl --system` reloads settings from all .conf files in {{c1::/etc/sysctl.d/}}, {{c2::/usr/lib/sysctl.d/}}, and /run/sysctl.d/.
+The virtual filesystem {{c1::/proc/sys}} exposes kernel tunable parameters as files. The `sysctl` tool is a userspace interface to {{c2::read and write}} these parameters.
+The command `stat -fc %T /sys/fs/cgroup/` returns {{c1::cgroup2fs}} for cgroups v2 or {{c2::tmpfs}} for cgroups v1.
+cgroups v1 uses {{c1::multiple independent hierarchies}} (one per controller). cgroups v2 uses a {{c2::single unified hierarchy}} with all controllers managed together.
+Cgroup {{c1::controllers}} are kernel subsystems that limit and account for resource usage: {{c2::cpu}}, {{c3::memory}}, io, pids.
+The file /boot/firmware/cmdline.txt must be a {{c1::single line}} — a newline would {{c2::truncate}} everything after it.
+{{c1::/proc/cmdline}} shows the kernel command line as passed by the {{c2::bootloader}} — read-only view of all boot parameters.
+Linux {{c1::namespaces}} isolate system resources for processes. Linux {{c2::cgroups}} limit how much of those resources processes can use. Together they form the basis of {{c3::containers}}.
+The 7 Linux namespace types: {{c1::PID}}, {{c2::NET}}, {{c3::MNT}}, UTS, IPC, USER, CGROUP.
+A {{c1::network namespace}} gives a process its own isolated {{c2::network interfaces}}, {{c3::routing tables}}, and iptables rules.
+The Linux {{c1::OOM killer}} selects and kills processes when memory runs critically low. It picks the process with the highest {{c2::oom_score}}.
+{{c1::oom_score_adj}} is a per-process tunable from {{c2::-1000}} (never kill) to +1000 (kill first) that biases the OOM killer.
+iptables organises rules into {{c1::chains}} (INPUT, OUTPUT, FORWARD) within {{c2::tables}} (filter, nat, mangle, raw).
+The iptables `filter` table {{c1::accepts/drops/rejects}} packets. The `nat` table handles {{c2::SNAT/DNAT/MASQUERADE}}. The `mangle` table {{c3::modifies packet headers}}.
+The iptables {{c1::FORWARD}} chain processes packets being {{c2::routed through}} the machine — essential for Kubernetes nodes forwarding pod traffic.
+{{c1::nftables}} is the modern replacement for iptables, providing a single framework replacing iptables, ip6tables, arptables, and {{c2::ebtables}}.
+A {{c1::Unix domain socket}} enables IPC between processes on the same host using {{c2::filesystem paths}} instead of network addresses, avoiding network stack overhead.
+Container runtimes use Unix sockets instead of TCP because they're {{c1::faster}} (no network overhead), support {{c2::file-based permissions}}, and only allow {{c3::local}} connections.
+The {{c1::OCI}} (Open Container Initiative) defines two main specs: the {{c2::Image Spec}} (container image structure) and the {{c3::Runtime Spec}} (how to create/run containers).
+The three layers: {{c1::containerd}} (image + lifecycle management) → {{c2::containerd-shim}} (keeps containers alive independently) → {{c3::runc}} (creates the actual container).
+{{c1::containerd-shim}} sits between containerd and the container, allowing containerd to {{c2::restart or upgrade}} without killing running containers.
+containerd is a {{c1::high-level}} runtime (images, snapshots, networking). It delegates container creation to {{c2::runc}}, the {{c3::low-level}} OCI runtime.
+{{c1::runc}} is the low-level OCI runtime that creates containers using Linux {{c2::namespaces}} and {{c3::cgroups}}. containerd delegates to it.
+The {{c1::containerd.io}} package from Docker includes containerd, {{c2::runc}}, and containerd-shim.
+The containerd Unix socket is at {{c1::/run/containerd/containerd.sock}}.
+The containerd default config is generated with: {{c1::containerd config default}} and written to {{c2::/etc/containerd/config.toml}}.
+{{c1::/run}} is a tmpfs directory for {{c2::runtime state}} (PID files, sockets) that is {{c3::cleared on every reboot}}, unlike /etc which persists.
+{{c1::systemd}} is PID {{c2::1}} after boot — the init system that manages service startup, dependencies, {{c3::cgroups}}, logging, and more.
+A service can be {{c1::enabled}} (starts at boot) but not {{c2::active}} (not currently running), or active but {{c3::not enabled}} (running but won't survive reboot).
+A systemd {{c1::target}} groups units that should start together, similar to traditional {{c2::runlevels}}. Example: {{c3::multi-user.target}}.
+`systemctl restart` {{c1::stops and starts}} the service (new PID). `systemctl reload` sends {{c2::SIGHUP}} to re-read config without stopping.
+{{c1::systemctl daemon-reload}} re-reads unit files from disk — required after {{c2::editing a .service file}}, but does NOT restart services.
+{{c1::systemd-timesyncd}} is a lightweight {{c2::NTP}} client built into systemd for automatic clock synchronisation.
+systemd-timesyncd is a simple {{c1::SNTP}} client. {{c2::chrony}} is a full NTP implementation with fast convergence. {{c3::ntpd}} is the classic reference daemon that can also serve time.
+To verify NTP sync: {{c1::timedatectl show --property=NTPSynchronized}} — should return {{c2::NTPSynchronized=yes}}.
+{{c1::ufw}} (Uncomplicated Firewall) is a user-friendly frontend for {{c2::iptables/nftables}} on Debian/Ubuntu.
+The `ip` command (from {{c1::iproute2}}) is the modern replacement for legacy tools like {{c2::ifconfig}} (net-tools) and supports features like {{c3::network namespaces}}.
+The `gpg --dearmor` flag converts an {{c1::ASCII-armored}} (text) key to {{c2::binary}} format, which apt's `signed-by` directive expects.
+GPG keys for apt repos are stored in {{c1::/etc/apt/keyrings/}} — the modern replacement for the deprecated {{c2::apt-key}} approach.
+`apt-key` was deprecated because it added keys {{c1::globally}} — any key could verify any repo. `signed-by` ties a {{c2::specific key to a specific repo}}.
+`apt full-upgrade` can {{c1::add or remove packages}} to satisfy new dependencies, unlike `apt upgrade` which {{c2::never removes packages}}.
+{{c1::apt-mark hold}} prevents packages from being automatically upgraded — used for kubeadm/kubelet/kubectl to avoid accidental {{c2::version changes}}.
+`dpkg --print-architecture` outputs {{c1::arm64}} on a 64-bit Raspberry Pi.
+{{c1::conntrack}} manages the kernel's connection tracking table. kube-proxy needs it to track connections for Service IP translation ({{c2::DNAT/SNAT}}).
+Kubernetes uses {{c1::socat}} for `kubectl port-forward` functionality — it relays bidirectional data between {{c2::two channels}}.
+To add a secondary IP: `nmcli connection modify "$CONN" {{c1::+ipv4.addresses}} 192.168.86.200/32`. The {{c2::+}} prefix appends instead of replacing.
+`ufw default allow {{c1::routed}}` changes the {{c2::FORWARD}} chain policy to ACCEPT — required for Kubernetes to forward external traffic to {{c3::pod IPs}}.

@@ -1,0 +1,125 @@
+Kubernetes binds {{c1::certificates}} to the node's IP address, so a {{c2::static IP}} is effectively required.
+Kubernetes networking requires two kernel modules: {{c1::overlay}} (for container filesystems) and {{c2::br_netfilter}} (for iptables to see bridged traffic).
+The three sysctl parameters for Kubernetes: net.bridge.bridge-nf-call-iptables, {{c1::net.bridge.bridge-nf-call-ip6tables}}, and {{c2::net.ipv4.ip_forward}} — all set to 1.
+Setting `net.ipv4.ip_forward = 1` enables {{c1::IP packet forwarding}} between network interfaces, required for pod-to-pod traffic routing.
+Without {{c1::br_netfilter}}, traffic between containers on the same bridge {{c2::bypasses iptables entirely}}, breaking Kubernetes Services and NetworkPolicies.
+Raspberry Pi OS disables the {{c1::memory}} cgroup controller by default. Enable it by appending {{c2::cgroup_enable=memory}} to /boot/firmware/cmdline.txt.
+Kubernetes needs the memory cgroup controller for {{c1::resource limits}} and {{c2::pod eviction}}.
+The {{c1::CRI}} (Container Runtime Interface) is a Kubernetes API that defines how the {{c2::kubelet}} communicates with container runtimes.
+Three CRI-compatible runtimes: {{c1::containerd}}, {{c2::CRI-O}}, and Mirantis Container Runtime.
+The critical containerd config change for Kubernetes: set {{c1::SystemdCgroup}} = {{c2::true}} in /etc/containerd/config.toml.
+If kubelet and containerd use {{c1::different cgroup drivers}}, they create {{c2::separate cgroup hierarchies}} for the same containers, causing resource accounting {{c3::conflicts}}.
+The systemd cgroup driver became the recommended default since Kubernetes {{c1::1.22}}+, replacing the older {{c2::cgroupfs}} driver.
+The {{c1::cgroupfs}} driver directly manipulates /sys/fs/cgroup/. The {{c2::systemd}} cgroup driver creates groups via systemd transient units, integrating with systemd's {{c3::single hierarchy}}.
+The {{c1::pause}} container (sandbox image) holds the {{c2::network namespace}} for each pod. Other containers in the pod join it.
+{{c1::crictl}} is a CLI for debugging CRI-compatible container runtimes, configured via {{c2::/etc/crictl.yaml}}.
+{{c1::ctr}} is containerd's native low-level CLI. {{c2::crictl}} talks via the CRI interface and understands Kubernetes concepts like {{c3::pods}}.
+The Kubernetes API server listens on port {{c1::6443}}/tcp.
+etcd uses port {{c1::2379}} for client connections and {{c2::2380}} for peer communication.
+The Kubelet API listens on port {{c1::10250}}/tcp.
+The Kubernetes NodePort range is {{c1::30000}}–{{c2::32767}}/tcp.
+kube-scheduler listens on port {{c1::10259}}/tcp, kube-controller-manager on {{c2::10257}}/tcp.
+Cilium uses port {{c1::8472}}/udp for {{c2::VXLAN}} overlay traffic between nodes.
+Cilium's {{c1::Hubble}} provides network flow observability on port {{c2::4244}}/tcp, with {{c3::Hubble Relay}} aggregating data on port 4245/tcp.
+MetalLB uses port {{c1::7946}} (TCP+UDP) for the {{c2::memberlist}} protocol to coordinate LoadBalancer IP announcements across nodes.
+Accurate time is critical for Kubernetes because {{c1::certificate validation}} and {{c2::etcd consensus}} depend on synchronized clocks.
+The {{c1::kubelet}} is the primary node agent that receives pod specs from the {{c2::API server}}, ensures containers are running, and reports status back.
+kubelet starts containers by sending gRPC requests to the container runtime via the {{c1::CRI}} socket. The runtime pulls images, sets up networking via {{c2::CNI}}, and spawns containers via {{c3::runc}}.
+The four control plane components: {{c1::kube-apiserver}} (API front door), {{c2::etcd}} (state store), {{c3::kube-scheduler}} (pod placement), and {{c4::kube-controller-manager}} (reconciliation loops).
+The {{c1::kube-apiserver}} is the only component that talks directly to {{c2::etcd}}. All other components communicate through the API server.
+{{c1::etcd}} uses the {{c2::Raft}} consensus protocol to maintain a replicated log. It requires a {{c3::quorum}} (majority of nodes) to commit writes.
+A Raft quorum requires {{c1::a majority}} of nodes to agree (e.g., {{c2::2 of 3}}, 3 of 5). Without quorum, etcd becomes {{c3::read-only}} to prevent split-brain.
+A {{c1::split-brain}} occurs when a network partition causes two groups of nodes to independently accept writes, leading to {{c2::divergent state}}.
+The kube-scheduler evaluates node fitness using {{c1::resource availability}}, {{c2::affinity/anti-affinity rules}}, {{c3::taints/tolerations}}, and topology constraints.
+{{c1::Taints}} are applied to {{c2::nodes}} to repel pods. {{c3::Tolerations}} are applied to {{c4::pods}} to allow scheduling on tainted nodes.
+Controllers follow the {{c1::reconciliation loop}} pattern: observe {{c2::current state}}, compare to {{c3::desired state}}, take action to close the gap.
+The three Kubernetes QoS classes: {{c1::Guaranteed}} (requests == limits), {{c2::Burstable}} (some requests set, not equal to limits), {{c3::BestEffort}} (no requests or limits).
+During eviction, kubelet kills pods in order: {{c1::BestEffort}} first, then {{c2::Burstable}}, then {{c3::Guaranteed}} last.
+With swap enabled, a pod exceeding its memory limit gets {{c1::swapped to disk}} instead of {{c2::OOM-killed}}, breaking the predictability of {{c3::QoS classes}}.
+The Kubernetes pod networking model: every pod gets a {{c1::unique IP}}, pods communicate across nodes without {{c2::NAT}}, creating a {{c3::flat network}}.
+{{c1::CNI}} (Container Network Interface) plugins configure networking for pods. When a pod starts, containerd calls the CNI binary from {{c2::/opt/cni/bin/}} with config from {{c3::/etc/cni/net.d/}}.
+Pod CIDR (e.g., 10.244.0.0/16) provides {{c1::real routable IPs}} for pods. Service CIDR (e.g., 10.96.0.0/12) provides {{c2::virtual IPs}} translated to pod IPs by kube-proxy.
+The four Kubernetes Service types: {{c1::ClusterIP}} (internal, default), {{c2::NodePort}} (static port on each node), {{c3::LoadBalancer}} (external LB), {{c4::ExternalName}} (DNS CNAME).
+{{c1::kube-proxy}} implements Service networking by programming {{c2::iptables}} or {{c3::IPVS}} rules to translate ClusterIPs to actual pod IPs.
+IPVS mode uses {{c1::hash tables}} for {{c2::O(1)}} lookup, while iptables mode walks chains in {{c3::O(n)}} — IPVS handles thousands of services more efficiently.
+kubeadm stores cluster PKI files in {{c1::/etc/kubernetes/pki/}}. The API server certificate's {{c2::SAN}} includes the node's IP — this is why changing the IP {{c3::breaks the cluster}}.
+Kubernetes deprecated {{c1::dockershim}} because containerd (Docker's own runtime) speaks {{c2::CRI}} natively, making the adapter between kubelet and Docker {{c3::unnecessary}}.
+The container runtime stack: kubelet → {{c1::CRI}} → {{c2::containerd}} → {{c3::containerd-shim}} → {{c4::runc}} → container process.
+{{c1::Static pods}} are defined as YAML in {{c2::/etc/kubernetes/manifests/}} and managed by the local kubelet. kubeadm uses them for control plane components to solve the {{c3::chicken-and-egg problem}}.
+kubeadm init steps: pre-flight checks → generate {{c1::PKI}} → generate {{c2::kubeconfig}} files → create {{c3::static pod manifests}} → wait for control plane → install {{c4::CoreDNS}}.
+{{c1::/etc/kubernetes/admin.conf}} is a kubeconfig file with {{c2::cluster admin credentials}} (client certificate). Copied to {{c3::~/.kube/config}} for kubectl access.
+A kubeconfig file defines three things: {{c1::clusters}} (API server URL + CA), {{c2::users}} (credentials), and {{c3::contexts}} (cluster + user combinations).
+Kubernetes requires unique {{c1::hostname}}, {{c2::MAC address}}, and {{c3::product_uuid}} for each node to avoid registration conflicts.
+During `kubeadm join`, the worker downloads the {{c1::cluster CA cert}}, verifies it against the {{c2::discovery-token-ca-cert-hash}}, and obtains a {{c3::kubelet client certificate}}.
+A kubeadm {{c1::bootstrap token}} (format: abcdef.0123456789abcdef) authenticates new nodes during join and expires after {{c2::24 hours}} by default.
+kube-proxy in {{c1::IPVS}} mode uses {{c2::ipset}} for efficient packet matching when routing traffic to Service backends.
+{{c1::kubeadm}} bootstraps a cluster: generates certificates, creates {{c2::static pod}} manifests, configures components. It does NOT install kubelet or manage infrastructure.
+The three packages on a K8s node: {{c1::kubeadm}} (bootstrap), {{c2::kubelet}} (node agent), {{c3::kubectl}} (CLI). Pinned with `apt-mark hold`.
+kubelet {{c1::crash-loops}} before `kubeadm init` because it tries to contact the {{c2::API server}} which doesn't exist yet — this is {{c3::normal}}.
+`kubeadm config images pull` {{c1::pre-downloads}} all container images for the control plane to avoid {{c2::timeouts}} during init.
+The `--pod-network-cidr` flag sets the CIDR for {{c1::pod IP addresses}} (e.g., 10.244.0.0/16). The {{c2::CNI plugin}} manages this range.
+`--skip-phases=addon/kube-proxy` tells kubeadm to skip {{c1::kube-proxy}} because {{c2::Cilium}} replaces its functionality with eBPF.
+The control plane taint `node-role.kubernetes.io/control-plane:{{c1::NoSchedule}}` prevents workloads from scheduling on control plane nodes. Remove it on {{c2::single-node}} clusters.
+{{c1::Helm}} is a Kubernetes package manager. A Helm {{c2::chart}} is a bundle of templated manifests. A {{c3::release}} is a deployed instance of a chart.
+`helm install` creates a new release. `helm upgrade` updates existing. {{c1::helm upgrade --install}} is {{c2::idempotent}} — creates or upgrades.
+`helm upgrade --reuse-values` preserves all previously set values and only applies {{c1::new --set flags}}. Without it, values reset to {{c2::chart defaults}}.
+{{c1::Cilium}} is an {{c2::eBPF}}-based CNI plugin for Kubernetes that can replace {{c3::kube-proxy}} using kernel-level programs.
+{{c1::eBPF}} (Extended Berkeley Packet Filter) runs sandboxed programs inside the {{c2::Linux kernel}} without modifying kernel source code.
+Cilium's Envoy crashes on RPi 4 because TCMalloc assumes {{c1::48-bit}} virtual address space but Cortex-A72 has {{c2::39-bit}}.
+`kubeProxyReplacement=true` enables Cilium's {{c1::eBPF}}-based replacement for kube-proxy, handling {{c2::Service ClusterIP}} translation without iptables.
+L3 policies filter by {{c1::IP/CIDR}}. L4 policies filter by {{c2::IP + port}}. L7 policies filter by {{c3::application content}} (HTTP path, headers). Cilium supports all three.
+kube-proxy / Cilium kube-proxy replacement operates at {{c1::L3/L4}} — translates {{c2::Service ClusterIPs}} to pod IPs using DNAT.
+{{c1::MetalLB}} in L2 mode assigns external IPs and announces them via {{c2::ARP}}. Needed on bare metal because there's no {{c3::cloud load balancer}}.
+MetalLB L2 mode: one node becomes {{c1::leader}} for each IP and responds to {{c2::ARP}} requests. BGP mode: announces routes to {{c3::upstream routers}}.
+MetalLB L2 operates at Layer {{c1::2}} (ARP). BGP mode operates at Layer {{c2::3}} (routing announcements).
+An {{c1::IPAddressPool}} CRD defines the IP range for MetalLB. An {{c2::L2Advertisement}} CRD tells it to announce using ARP/NDP.
+MetalLB's IP pool must be {{c1::outside the router's DHCP range}} to avoid {{c2::IP conflicts}} with other devices.
+The {{c1::Gateway API}} is the successor to Ingress. Its three resources: {{c2::GatewayClass}} (controller), {{c3::Gateway}} (LB instance), {{c4::HTTPRoute}} (routing rules).
+Gateway API improves over Ingress with {{c1::role separation}} (infra vs app teams), {{c2::multi-protocol}} support, and standardized {{c3::extensibility}}.
+{{c1::Envoy Gateway}} implements the Gateway API using {{c2::Envoy proxy}} as the data plane. Envoy is a high-performance {{c3::L4/L7}} proxy.
+An {{c1::HTTPRoute}} defines HTTP routing rules and attaches to a {{c2::Gateway}} via parentRefs. Managed by {{c3::application teams}}.
+A {{c1::GatewayClass}} is cluster-scoped and defines which {{c2::controller}} handles Gateways — similar to {{c3::StorageClass}} for storage.
+The Kubernetes {{c1::Ingress}} resource defines HTTP routing rules but requires a separate {{c2::Ingress controller}} (like nginx) to implement them. Now superseded by {{c3::Gateway API}}.
+The community nginx Ingress controller is {{c1::ingress-nginx}} (kubernetes/ingress-nginx). NGINX Inc's commercial version is {{c2::nginx-ingress}} (nginxinc/kubernetes-ingress) — different projects.
+Ingress limitations: no {{c1::role separation}}, advanced features require non-portable {{c2::annotations}}, only {{c3::HTTP/HTTPS}} natively, no standard traffic splitting.
+Ingress uses controller-specific {{c1::annotations}} for advanced features (rewrites, canary, rate limiting). Gateway API uses {{c2::typed, structured resources}} that are {{c3::portable}} across implementations.
+Gateway API role separation: {{c1::infra team}} manages GatewayClass + Gateway (ports, TLS, IPs). {{c2::App team}} manages HTTPRoute (paths, backends). Ingress had {{c3::everything in one resource}}.
+Ingress uses {{c1::ingressClassName}} to select a controller (global, implicit). HTTPRoute uses {{c2::parentRefs}} to explicitly attach to specific {{c3::Gateways}} by name — supports attaching to multiple Gateways.
+In Ingress, TLS is configured on the {{c1::Ingress resource}} via `spec.tls`. In Gateway API, TLS is on the {{c2::Gateway listener}} — controlled by the {{c3::infra team}}, not app devs.
+{{c1::parentRefs}} in HTTPRoute is a list, so one route can attach to {{c2::multiple Gateways}} (e.g., internal + external) — impossible with {{c3::Ingress}} without duplication.
+HTTPRoute matching capabilities beyond Ingress: {{c1::headers}} (Exact/Regex), {{c2::query parameters}}, {{c3::HTTP method}} — all in the standard spec, no annotations needed.
+Ingress canary: `nginx.ingress.kubernetes.io/canary-weight: "20"` (annotation, nginx-only). Gateway API: native {{c1::backendRefs[].weight}} field — e.g., {{c2::80%}} to v1, {{c3::20%}} to v2. Standardized.
+Gateway API extends via {{c1::policy attachments}} (typed CRDs for rate limiting, auth, retries) instead of Ingress's unstructured {{c2::annotations}}.
+Ingress is {{c1::frozen}} (no new features). Gateway API is the {{c2::recommended replacement}}. Both can {{c3::coexist}} in the same cluster for incremental migration.
+Ingress → Gateway API mapping: host rules → HTTPRoute {{c1::hostnames}}, path rules → HTTPRoute {{c2::matches}}, TLS → Gateway {{c3::listener TLS}}, annotations → HTTPRoute {{c4::filters}}.
+{{c1::CoreDNS}} resolves Service names to ClusterIPs. Every pod's /etc/resolv.conf points to the {{c2::CoreDNS ClusterIP}}.
+The DNS name format: {{c1::<service>}}.{{c2::<namespace>}}.svc.{{c3::cluster.local}} → resolves to the Service ClusterIP.
+{{c1::local-path-provisioner}} provides dynamic PV provisioning using {{c2::local node storage}}, creating directories on the host for each PVC.
+A {{c1::StorageClass}} defines a class of storage. Making it {{c2::default}} means PVCs without a specified class use it automatically.
+{{c1::PV}} is a storage resource. {{c2::PVC}} is a request for storage. {{c3::Dynamic provisioning}} auto-creates PVs via StorageClass when PVCs are created.
+PV reclaim policies: {{c1::Delete}} (remove PV + storage), {{c2::Retain}} (keep for manual cleanup), Recycle (deprecated).
+{{c1::cert-manager}} automates TLS certificate issuance. A {{c2::ClusterIssuer}} can issue certificates for {{c3::any namespace}}.
+A {{c1::CRD}} (Custom Resource Definition) lets you define new resource types in Kubernetes. Examples: MetalLB's {{c2::IPAddressPool}}, Gateway API's {{c3::HTTPRoute}}.
+CRDs define the {{c1::"what"}} (new resource types). {{c2::Controllers}} are the "how" — they watch CRD instances and {{c3::reconcile}} state.
+The {{c1::operator}} pattern uses CRDs + controllers to encode domain knowledge for managing {{c2::complex stateful applications}}.
+{{c1::Deployment}} runs N replicas scheduled anywhere. {{c2::DaemonSet}} runs exactly one pod per {{c3::node}}.
+{{c1::Deployment}}: pods are interchangeable. {{c2::StatefulSet}}: each pod has a stable hostname (pod-0, pod-1), {{c3::persistent storage}}, and ordered startup.
+A Kubernetes {{c1::Service}} provides a stable {{c2::ClusterIP}} for ephemeral pods. kube-proxy/Cilium {{c3::load-balances}} traffic to backend pods.
+With Cilium, eBPF intercepts packets to a {{c1::ClusterIP}}, selects a backend pod ({{c2::load balancing}}), and rewrites the destination ({{c3::DNAT}}) — all in the kernel.
+{{c1::Hubble}} is Cilium's observability platform — {{c2::flow logs}}, DNS queries, HTTP requests collected from {{c3::eBPF}} programs.
+The three probe types: {{c1::Startup}} (runs once), {{c2::Liveness}} (kills if fails), {{c3::Readiness}} (removes from endpoints if fails).
+{{c1::CrashLoopBackOff}} means a pod keeps crashing and Kubernetes restarts with {{c2::exponentially increasing delays}} (10s→20s→40s→5min).
+{{c1::Anti-affinity}} prevents pods from scheduling on the {{c2::same node}}. Used for HA — if one node fails, other replicas {{c3::survive}}.
+The chicken-and-egg with kube-proxy replacement: Cilium needs the {{c1::API server}}, normally accessed via ClusterIP, but ClusterIP translation requires {{c2::kube-proxy}}. Solution: set {{c3::k8sServiceHost}} to the real node IP.
+The three CIDRs: pod CIDR ({{c1::10.244.0.0/16}}), service CIDR ({{c2::10.96.0.0/12}}), and the node's LAN subnet ({{c3::192.168.86.0/24}}).
+Traffic from internet: router ARPs → {{c1::MetalLB}} leader responds → {{c2::Cilium}} DNAT to nginx → nginx matches {{c3::HTTPRoute}} → forwards to backend pod.
+`kubeadm reset` tears down the cluster but does NOT clean {{c1::iptables rules}} or {{c2::CNI configs}} — those need manual cleanup.
+Envoy proxy crashes on RPi4 because {{c1::TCMalloc}} assumes a {{c2::48-bit}} virtual address space, but the Cortex-A72 has only {{c3::39-bit}} VA space.
+{{c1::Nginx Gateway Fabric}} implements the Gateway API using {{c2::nginx}} as the data plane — chosen over Envoy Gateway because Envoy's {{c3::TCMalloc}} crashes on RPi4.
+When you create a Gateway with NGF, it auto-provisions an {{c1::nginx Deployment}} and a {{c2::LoadBalancer Service}} in the same namespace as the Gateway.
+MetalLB L2 fails on WiFi because routers like {{c1::Google WiFi}} filter {{c2::ARP responses}} for IPs not in their {{c3::DHCP table}}.
+A {{c1::gratuitous ARP}} is an unsolicited ARP reply broadcast to announce an IP-to-MAC mapping. MetalLB sends them, but {{c2::WiFi routers}} may filter them.
+The WiFi fix for MetalLB: add the pool IP as a {{c1::secondary address}} on wlan0 via `nmcli connection modify +ipv4.addresses {{c2::192.168.86.200/32}}`. The kernel responds to ARP natively.
+A {{c1::secondary IP}} is an additional address on an interface alongside the primary. The kernel responds to {{c2::ARP}} for all IPs on the interface.
+`ufw default allow routed` allows {{c1::forwarded/routed}} packets (FORWARD chain). Required because Cilium {{c2::DNATs}} external traffic to pod IPs, which involves {{c3::packet forwarding}}.
+UFW's three policies: {{c1::incoming}} = INPUT chain (packets to host), {{c2::outgoing}} = OUTPUT chain (packets from host), {{c3::routed}} = FORWARD chain (packets forwarded through host).

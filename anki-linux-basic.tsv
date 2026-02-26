@@ -1,0 +1,111 @@
+What tool is used to flash Raspberry Pi OS onto an SD card?	Raspberry Pi Imager
+Which Raspberry Pi OS variant is recommended for a headless Kubernetes node?	Raspberry Pi OS Lite (64-bit) — no desktop, minimal footprint
+What Debian version is Raspberry Pi OS Trixie based on?	Debian 13
+What command installs Raspberry Pi Imager on macOS via Homebrew?	brew install --cask raspberry-pi-imager
+What architecture does Raspberry Pi 4 run in 64-bit mode?	aarch64 (ARM64)
+What does the Pi do during its first boot after flashing? (4 things)	1) Resizes filesystem to fill SD card 2) Configures user account, hostname, WiFi 3) Starts SSH server 4) Registers on the network via mDNS
+How long should you wait for the Pi's first boot to complete?	60–90 seconds
+Where in the Raspberry Pi Imager do you configure hostname, WiFi, and SSH?	In the OS Customisation settings (click "Edit Settings" when prompted after clicking Next)
+What command removes a stale SSH host key for a re-flashed Pi?	ssh-keygen -R rara.local
+Why does SSH show a host key warning after re-flashing the SD card?	The new OS generates a new SSH host key, which doesn't match the one your client cached from the previous install
+What command copies your SSH public key to a remote host?	ssh-copy-id ra@rara.local
+What command generates an Ed25519 SSH key pair?	ssh-keygen -t ed25519
+What command checks the architecture of a Linux system?	uname -m
+What command checks the WiFi connection status via NetworkManager?	nmcli dev status
+What command disables SSH password authentication on the Pi?	sudo sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config && sudo systemctl reload sshd
+What does `nmcli -t` flag do?	Produces terse (machine-readable) output — no headers, colon-separated fields. Useful for scripting and piping.
+What does `nmcli connection modify` do vs `nmcli connection edit`?	`modify` changes a property in a single command (non-interactive). `edit` opens an interactive shell for the connection profile.
+What does setting `ipv4.method manual` do in NetworkManager?	Disables DHCP and uses only the statically configured IP address, gateway, and DNS servers.
+What command dynamically finds the active WiFi connection name in NetworkManager?	CONN="$(nmcli -t -f NAME,DEVICE connection show --active | grep wlan0 | cut -d: -f1)"
+Why should you NOT use `nmcli connection down` over SSH?	It kills the WiFi connection and your SSH session dies before `connection up` can run. Use `nmcli device reapply wlan0` instead.
+What does `nmcli device reapply wlan0` do?	Applies changed connection settings in-place without disconnecting — safe to run over SSH.
+What is NetworkManager?	A daemon that manages network connections on Linux. It handles WiFi, Ethernet, VPN, mobile broadband, etc. Uses connection profiles stored in /etc/NetworkManager/system-connections/. Controlled via nmcli, nmtui, or GUI.
+What is the relationship between NetworkManager, dhclient, and systemd-networkd?	They are alternative network management systems — typically only one is active. NetworkManager is desktop/general-purpose, systemd-networkd is for servers/containers, dhclient is a standalone DHCP client. Using multiple simultaneously causes conflicts.
+What is a connection profile in NetworkManager?	A saved set of network configuration (IP, DNS, WiFi SSID, etc.) stored as a file. A device can have multiple profiles but only one active at a time. Profiles persist across reboots.
+What is zram?	A Linux kernel module that creates compressed block devices in RAM. Used for swap, it compresses pages instead of writing them to disk, trading CPU for reduced memory pressure.
+How does zram swap differ from traditional disk swap?	zram swap lives in RAM (compressed), so it's much faster than disk swap but uses CPU for compression. Traditional swap writes uncompressed pages to disk/SD card.
+What was `dphys-swapfile`?	The old Raspberry Pi OS swap manager that created a swap file on the SD card. Replaced by zram in Trixie.
+What swap mechanism does Raspberry Pi OS Trixie use by default?	zram swap — compressed RAM-based swap (not the old dphys-swapfile).
+What command immediately turns off all swap?	sudo swapoff -a
+What does `swapon --show` display?	Lists all active swap devices/files with their name, type, size, and usage. No output means no swap is active.
+What does commenting out a line in /etc/fstab do?	Prevents that filesystem/swap entry from being mounted/activated automatically at boot.
+What does `systemctl mask` do compared to `systemctl disable`?	`disable` prevents a service from starting at boot but it can still be started manually. `mask` links the unit to /dev/null, completely preventing it from starting by any means.
+Why is `systemctl mask swap.target` needed when disabling swap?	systemd has a swap.target that can reactivate swap devices. Masking it prevents systemd from turning swap back on even after swapoff.
+What is a Linux kernel module?	A piece of code that can be loaded into or unloaded from the running kernel on demand, extending its functionality without rebooting. Drivers, filesystems, and networking features are often implemented as modules.
+What is the difference between `modprobe` and `insmod`?	`insmod` loads a single module file without resolving dependencies. `modprobe` is smarter — it reads /lib/modules, resolves and loads all dependencies automatically, and uses aliases from configuration files.
+Where are kernel module files physically stored on disk?	Under /lib/modules/$(uname -r)/ — each kernel version has its own directory of .ko (kernel object) files.
+What does `modinfo <module>` show?	Metadata about a kernel module: description, author, license, parameters, dependencies, and file path.
+Where do you persist kernel modules to load at boot?	In a file under /etc/modules-load.d/ (e.g. /etc/modules-load.d/k8s.conf).
+What command loads a kernel module immediately without rebooting?	sudo modprobe <module_name>
+What does `lsmod` do?	Lists all currently loaded kernel modules, their size, and dependencies (how many other modules use them).
+What is the `overlay` kernel module used for?	Provides OverlayFS — a union filesystem that layers container image layers on top of each other. containerd uses it as its default snapshotter for container filesystems.
+What is OverlayFS?	A union filesystem that stacks a writable "upper" layer over read-only "lower" layers. Containers use it to share base image layers while having their own writable layer on top.
+Where do you persist sysctl settings?	In a file under /etc/sysctl.d/ (e.g. /etc/sysctl.d/k8s.conf). Apply with `sudo sysctl --system`.
+What does `sudo sysctl --system` do?	Reloads and applies all sysctl settings from /etc/sysctl.d/, /usr/lib/sysctl.d/, /run/sysctl.d/, and /etc/sysctl.conf — applying every .conf file in order.
+What is /proc/sys?	A virtual filesystem that exposes kernel tunable parameters as files. Each file corresponds to a sysctl value. Reading a file shows the current value; writing to it changes the kernel parameter at runtime.
+How does `sysctl` relate to /proc/sys?	`sysctl` is a userspace tool that reads/writes /proc/sys files. `sysctl net.ipv4.ip_forward` is equivalent to reading /proc/sys/net/ipv4/ip_forward. The /etc/sysctl.d/ config files make these changes persistent across reboots.
+What command checks whether the system uses cgroups v1 or v2?	stat -fc %T /sys/fs/cgroup/ — returns `cgroup2fs` for v2 or `tmpfs` for v1.
+What command shows available cgroup controllers?	cat /sys/fs/cgroup/cgroup.controllers
+What is the difference between cgroups v1 and cgroups v2?	cgroups v1 uses multiple independent hierarchies (one per controller). cgroups v2 uses a single unified hierarchy where all controllers are managed together, with simpler and more consistent APIs.
+What are cgroup controllers?	Kernel subsystems that limit and account for resource usage. Examples: `cpu` (CPU time), `memory` (RAM limits), `io` (disk I/O), `pids` (process count limits).
+What is /boot/firmware/cmdline.txt?	The kernel command line file for Raspberry Pi. Contains boot parameters passed to the Linux kernel — must be a single line.
+Why must /boot/firmware/cmdline.txt be a single line?	The bootloader reads it as one continuous string. A newline would truncate everything after it, potentially making the system unbootable.
+What does `cgroup_enable=memory` do as a kernel parameter?	Tells the Linux kernel to enable the memory controller in the cgroup hierarchy, allowing processes to be grouped and their memory usage tracked and limited.
+What does /proc/cmdline contain?	The kernel command line as passed by the bootloader at boot time. Read-only — shows all boot parameters the running kernel was started with.
+What is the kernel command line used for?	Passes configuration parameters to the Linux kernel at boot time. Examples: root filesystem location, console settings, cgroup configuration, kernel debugging flags, driver parameters.
+What are Linux namespaces?	A kernel feature that isolates and virtualises system resources for processes. Each namespace provides its own view of a particular resource (network, PIDs, mounts, etc.), forming the foundation of containers.
+Name the 7 types of Linux namespaces.	1) PID (process IDs) 2) NET (network stack) 3) MNT (mount points) 4) UTS (hostname) 5) IPC (inter-process communication) 6) USER (user/group IDs) 7) CGROUP (cgroup root)
+What does a network namespace isolate?	Each network namespace gets its own network interfaces, routing tables, iptables rules, and sockets. A process in one netns cannot see interfaces or connections in another.
+How do containers use namespaces?	Each container runs in its own set of namespaces — it gets an isolated view of PIDs, network, filesystem mounts, hostname, etc. This creates the illusion of a separate machine without a full VM.
+What is the relationship between namespaces and cgroups?	Namespaces provide isolation (what a process can see). Cgroups provide resource limits (how much a process can use). Together they form the two pillars of Linux containers.
+What is the Linux OOM (Out of Memory) killer?	A kernel mechanism that selects and kills processes when the system runs critically low on memory. Each process has an oom_score; the kernel kills the highest-scoring process to free memory.
+What is oom_score_adj?	A per-process tunable (-1000 to +1000) that biases the OOM killer. -1000 means "never kill this process." Higher values make a process more likely to be killed. Critical system processes typically set -999.
+What is iptables?	A userspace tool for configuring the Linux kernel's netfilter packet filtering framework. It defines rules organized in chains (INPUT, OUTPUT, FORWARD) and tables (filter, nat, mangle, raw) that control how packets are processed.
+What are the main iptables tables and their purposes?	`filter` — accept/drop/reject packets (default). `nat` — SNAT/DNAT/MASQUERADE. `mangle` — modify packet headers (TTL, TOS, marking). `raw` — bypass connection tracking.
+What is the iptables FORWARD chain used for?	Processes packets that are being routed through the machine (not destined for or originating from it). Essential for any machine acting as a router, including Kubernetes nodes forwarding pod traffic.
+What is nftables and how does it relate to iptables?	nftables is the modern replacement for iptables in the Linux kernel (since kernel 3.13). It provides a single framework replacing iptables, ip6tables, arptables, and ebtables.
+What is a Unix domain socket?	An IPC (inter-process communication) mechanism for exchanging data between processes on the same host. Unlike TCP sockets, Unix sockets use filesystem paths (e.g., /run/containerd/containerd.sock) and don't involve network stack overhead.
+Why do container runtimes use Unix sockets instead of TCP?	Unix sockets are faster (no network stack overhead), support file-based permissions for access control, and only allow local connections — there's no risk of accidental network exposure.
+What is the OCI (Open Container Initiative)?	A Linux Foundation project that defines industry standards for container formats. It has two main specs: the Image Spec (how container images are structured) and the Runtime Spec (how containers are created and run).
+What is an OCI runtime?	A program that implements the OCI Runtime Specification — it takes a filesystem bundle (rootfs + config.json) and creates a running container from it. `runc` is the reference implementation.
+What is runc?	The low-level OCI container runtime that actually creates and runs containers using Linux kernel features (namespaces, cgroups). containerd calls runc to spawn containers.
+What is containerd?	A container runtime that implements the CRI (Container Runtime Interface), used by Kubernetes to run containers. A high-level runtime managing images, snapshots, and container lifecycle.
+What is the relationship between containerd and runc?	containerd is a high-level runtime (manages images, snapshots, networking setup). It delegates actual container creation to runc, the low-level OCI runtime.
+What are the three layers in the containerd -> runc relationship?	1) containerd: image management, snapshotting, container lifecycle. 2) containerd-shim: keeps the container running independently of containerd (allows containerd restarts). 3) runc: creates the actual container (namespaces, cgroups, execing the process).
+What is containerd-shim and why does it exist?	A small process that sits between containerd and the actual container. It allows containerd to restart/upgrade without killing running containers, reaps zombie processes, and reports exit status back to containerd.
+What is the containerd.io package?	The Docker-packaged version of containerd, distributed through Docker's apt/yum repos. Includes containerd, runc, and containerd-shim.
+What is the containerd socket path?	/run/containerd/containerd.sock — the Unix socket used for gRPC communication with containerd.
+What command generates the default containerd config file?	sudo containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+What does `sudo ctr version` show?	The containerd client and server version information, confirming containerd is running and reachable.
+What is the `ctr` command?	The low-level CLI client for containerd. Used for direct containerd operations like pulling images, running containers, and managing namespaces. Less user-friendly than crictl.
+What is /etc/fstab?	A configuration file that defines filesystems to be mounted at boot. Each line specifies: device, mount point, filesystem type, mount options, dump flag, and fsck pass number.
+What is the /run directory used for in Linux?	A tmpfs-mounted directory for runtime data that exists only while the system is running. Used for PID files, sockets (e.g., containerd.sock), lock files, and other ephemeral state.
+What is the difference between /etc and /run for configuration?	/etc holds persistent configuration that survives reboots. /run holds runtime state generated after boot (PID files, sockets, temporary data) — it's a tmpfs cleared on every reboot.
+What is systemd?	The init system and service manager for modern Linux. PID 1 after boot. Manages service startup, dependencies, logging (journald), timers, sockets, cgroups, and more. Uses unit files to describe services.
+What are the three main systemctl states for a service: enabled, active, masked?	`enabled` — starts automatically at boot. `active` — currently running. `masked` — symlinked to /dev/null, cannot start by any means. These are independent.
+What is a systemd target?	A grouping mechanism similar to runlevels. Targets group units that should be started together. Example: multi-user.target (non-graphical multi-user), graphical.target (desktop), swap.target (all swap units).
+What is the difference between `systemctl restart` and `systemctl reload`?	`restart` stops and starts the service (new PID, brief downtime). `reload` sends a signal (usually SIGHUP) telling the service to re-read its configuration without stopping — zero downtime if supported.
+What does `systemctl daemon-reload` do?	Reloads systemd's own configuration — re-reads all unit files from disk. Required after editing a .service file so systemd picks up the changes. Does NOT restart any services.
+What is the difference between systemd-timesyncd, chrony, and ntpd?	systemd-timesyncd: simple SNTP client, only syncs from servers. chrony: full NTP implementation, fast convergence, handles intermittent connections well. ntpd: the classic reference NTP daemon, can serve time to other machines.
+What does `timedatectl set-ntp true` do?	Enables automatic time synchronisation via NTP using systemd-timesyncd.
+What is systemd-timesyncd?	A lightweight NTP client built into systemd. It synchronises the system clock with remote NTP servers. Simpler than full NTP daemons like chrony or ntpd.
+What command checks NTP synchronisation status?	timedatectl show --property=NTPSynchronized (should show NTPSynchronized=yes)
+What is `ufw`?	Uncomplicated Firewall — a user-friendly frontend for iptables/nftables on Debian/Ubuntu. Simplifies managing firewall rules.
+What is the recommended default ufw policy for a server?	Deny all incoming traffic, allow all outgoing traffic. Then explicitly open only the ports you need.
+Why should you open port 22 FIRST before enabling ufw?	If you enable ufw with deny-incoming policy without allowing SSH (port 22), you lock yourself out of the machine.
+What is the difference between `ip addr` and `ifconfig`?	Both show network interface configuration. `ip addr` is the modern tool from iproute2 (supports all features, namespaces). `ifconfig` is legacy from net-tools (limited, no namespace support). `ip` is the recommended tool.
+What does the `--dearmor` flag do in `gpg --dearmor`?	Converts an ASCII-armored (text) GPG key to binary format, which is what apt's `signed-by` directive expects.
+What is the purpose of /etc/apt/keyrings/?	A directory for storing GPG keys used to verify apt repository signatures. Modern best practice (replaces the deprecated apt-key approach).
+Why was `apt-key` deprecated in favor of `signed-by`?	apt-key added keys globally — any key could verify any repo. `signed-by` in the sources list ties a specific key to a specific repo, improving security.
+What does `dpkg --print-architecture` output on a 64-bit Raspberry Pi?	`arm64`
+What is the difference between `apt update` and `apt full-upgrade`?	`apt update` refreshes the package index (what's available). `apt full-upgrade` installs newer versions AND can add/remove packages to satisfy new dependencies (unlike `apt upgrade` which never removes).
+What does `apt-mark hold` do?	Prevents a package from being automatically upgraded by apt. Used for kubeadm/kubelet/kubectl to avoid accidental Kubernetes version changes.
+What does `free -h` show?	System memory usage in human-readable format: total, used, free, shared, buff/cache, and available RAM, plus swap usage.
+What does `socat` do and why is it needed for Kubernetes?	socat is a multipurpose relay tool for bidirectional data transfer between two channels. Kubernetes uses it for `kubectl port-forward` functionality.
+What does `conntrack` do and why is it needed for Kubernetes?	conntrack manages the kernel's connection tracking table (netfilter). Kubernetes/kube-proxy needs it to track network connections for Service IP translation (DNAT/SNAT).
+What is `ipset` and why is it needed for Kubernetes?	ipset creates and manages sets of IP addresses/ports in the kernel. kube-proxy in IPVS mode uses ipsets for efficient packet matching when routing traffic to Service backends.
+What does the `ethtool` command do?	Queries and controls network device driver and hardware settings (speed, duplex, offloading features). Used by some CNI plugins for interface configuration.
+How do you add a secondary IP to a NetworkManager connection?	`nmcli connection modify "$CONN" +ipv4.addresses <ip>/32` — the `+` prefix adds to the existing list instead of replacing it. Apply with `nmcli device reapply <iface>`.
+What does `nmcli connection modify` with a `+` prefix do?	The `+` prefix appends to a multi-valued property (e.g., `+ipv4.addresses`, `+ipv4.dns`). Without `+`, the value replaces all existing entries.
+What are UFW's three default policy types?	Incoming (INPUT chain — packets to the host), Outgoing (OUTPUT chain — packets from the host), Routed (FORWARD chain — packets being forwarded through the host to another destination).
+What does `ufw default allow routed` do?	Changes the FORWARD chain default policy to ACCEPT, allowing packets to be forwarded through the machine. Required for Kubernetes when external traffic is DNATed to pod IPs.
