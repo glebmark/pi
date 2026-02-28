@@ -1,0 +1,43 @@
+GitOps is an operational model where the desired state is declared in {{c1::Git}} and a {{c2::controller in the cluster}} continuously reconciles actual state to match.
+The four core Flux controllers are {{c1::source-controller}}, {{c2::kustomize-controller}}, {{c3::helm-controller}}, and {{c4::notification-controller}}.
+Flux's {{c1::source-controller}} fetches artifacts from Git repos, Helm repos, OCI registries, and S3 buckets, making them available to other controllers.
+Flux's {{c1::kustomize-controller}} reconciles Kustomization CRs — applying manifests from a source with optional overlays, variable substitution, and {{c2::health checks}}.
+Flux's {{c1::helm-controller}} reconciles {{c2::HelmRelease}} CRs — installing, upgrading, and uninstalling Helm charts declaratively.
+Flux's {{c1::notification-controller}} handles inbound {{c2::webhooks (Receivers)}} and outbound {{c3::notifications (Providers/Alerts)}}.
+A {{c1::GitRepository}} CR tells source-controller to clone a Git repo at a given URL, branch/tag, and interval, producing a {{c2::versioned tarball artifact}}.
+A {{c1::HelmRepository}} CR points to a Helm chart repository. It periodically fetches the {{c2::repo index}} so helm-controller can pull specific chart versions.
+A {{c1::HelmRelease}} CR declares a Helm chart to install/upgrade in a target namespace, with values, version constraints, and {{c2::dependsOn}} for ordering.
+`flux bootstrap` installs Flux controllers, creates a {{c1::GitRepository}} and {{c2::Kustomization}} pointing at your repo, and commits Flux's own manifests to the repo.
+The `dependsOn` field in a HelmRelease creates an {{c1::ordering constraint}} — Flux won't reconcile the resource until all {{c2::dependencies report as Ready}}.
+When a HelmRelease matches an existing Helm release by {{c1::name}} and {{c2::namespace}}, Flux {{c3::adopts it}} and runs `helm upgrade` to ensure state matches.
+The `spec.interval` field controls how often Flux {{c1::checks for drift}} between desired state (Git) and {{c2::actual cluster state}}.
+Setting `prune: {{c1::true}}` in a Flux Kustomization enables {{c2::garbage collection}} — removing resources from the cluster when their manifests are deleted from Git.
+You should set `prune: {{c1::false}}` for CRDs because deleting CRDs {{c2::cascades to all custom resources}} of that type.
+The `--path` flag in `flux bootstrap` specifies the {{c1::directory within the repo}} that Flux watches — only manifests under this path are {{c2::reconciled}}.
+A Flux {{c1::source artifact}} is a versioned {{c2::tarball}} produced by source-controller that other controllers consume to get manifests.
+In a HelmRelease, `spec.chart.spec.version` accepts {{c1::semver constraints}} like `1.19.x`, `>=1.0.0 <2.0.0`, or `*`.
+`flux reconcile kustomization flux-system --with-source` forces an immediate {{c1::Git fetch}} AND {{c2::reconciliation}}, without waiting for the interval.
+Each Flux Kustomization status contains a {{c1::revision}} field (e.g., `main@sha1:03af2485`) showing exactly which {{c2::commit}} is deployed.
+A Flux {{c1::Receiver}} listens for inbound webhooks and triggers {{c2::immediate reconciliation}}, bypassing the poll interval.
+`flux suspend` {{c1::pauses reconciliation}} for a resource — it stays deployed but Flux stops checking for {{c2::drift}} or updates.
+A HelmRepository with `type: {{c1::oci}}` points to a container registry (ghcr.io, Docker Hub) that stores Helm charts as {{c2::OCI artifacts}}.
+Flux source resources (HelmRepository, GitRepository) typically live in the {{c1::flux-system}} namespace, while HelmReleases live in the {{c2::target namespace}} of the chart.
+Flux supports {{c1::SOPS}} and {{c2::age}} encryption for secrets in Git — kustomize-controller decrypts them at apply time using a key stored in the cluster.
+In Flux multi-tenancy, `spec.serviceAccountName` in a Kustomization {{c1::impersonates}} a specific ServiceAccount, limiting what the Kustomization can do via {{c2::RBAC}}.
+`spec.targetNamespace` in a Flux Kustomization {{c1::overrides the namespace}} for all resources, regardless of what the manifests declare.
+`flux uninstall` removes Flux controllers and CRDs but does {{c1::NOT delete}} the resources Flux was managing — they remain in the cluster {{c2::unreconciled}}.
+Kustomization {{c1::healthChecks}} make the Kustomization report as not-Ready until listed resources are healthy — {{c2::downstream dependents}} then wait via `dependsOn`.
+`spec.postBuild` in a Flux Kustomization enables {{c1::variable substitution}} in manifests, replacing `${VAR_NAME}` placeholders using values from {{c2::ConfigMaps/Secrets}}.
+`flux bootstrap` is preferred over `flux install` because it creates a {{c1::self-managing loop}} — Flux's own manifests are stored in Git and reconciled by Flux itself.
+The `--personal` flag in `flux bootstrap github` indicates the repo belongs to a {{c1::personal account}} rather than a {{c2::GitHub organization}}.
+A Flux {{c1::deploy key}} is an SSH key pair — public key on GitHub, private key as a {{c2::Kubernetes Secret}} in flux-system — used by Flux to clone the repo.
+If you manually `kubectl apply` a Flux-managed resource, Flux will {{c1::revert your changes}} on the next reconciliation cycle to match {{c2::Git}}.
+The Flux reconciliation loop: {{c1::source-controller}} fetches → {{c2::kustomize/helm-controller}} compares desired vs actual → applies diff → reports {{c3::status}}.
+To upgrade Flux itself, run `flux bootstrap` again — it upgrades controllers to match your {{c1::CLI version}} and is {{c2::non-disruptive}}.
+`spec.force: true` in a Kustomization uses {{c1::server-side force-apply}}, resolving field ownership conflicts but potentially overriding changes from {{c2::other controllers}}.
+The typical Flux repo structure separates {{c1::infrastructure}} (platform components with strict ordering) from {{c2::apps}} (workloads that depend on infrastructure).
+In HelmRelease, `spec.upgrade.remediation.remediateLastFailure: {{c1::true}}` enables automatic {{c2::rollback}} to the previous release on final upgrade failure.
+Flux's Kustomization CR ({{c1::kustomize.toolkit.fluxcd.io}}) is a controller resource that triggers reconciliation, while kustomize.config.k8s.io's Kustomization is a {{c2::local build file}}.
+When Flux detects a new commit, the reconciliation sequence is: source-controller updates the {{c1::artifact}} → dependent Kustomizations/HelmReleases {{c2::reconcile}} against the new artifact.
+`flux reconcile kustomization flux-system --with-source` cascades to {{c1::all manifests}} because the root Kustomization applies everything under `cluster/`, and child Kustomizations detect the {{c2::new artifact revision}} from the shared GitRepository.
+To reconcile only a single component, target it directly: `flux reconcile {{c1::helmrelease}} cilium -n {{c2::kube-system}}`.

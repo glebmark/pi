@@ -123,3 +123,32 @@ The WiFi fix for MetalLB: add the pool IP as a {{c1::secondary address}} on wlan
 A {{c1::secondary IP}} is an additional address on an interface alongside the primary. The kernel responds to {{c2::ARP}} for all IPs on the interface.
 `ufw default allow routed` allows {{c1::forwarded/routed}} packets (FORWARD chain). Required because Cilium {{c2::DNATs}} external traffic to pod IPs, which involves {{c3::packet forwarding}}.
 UFW's three policies: {{c1::incoming}} = INPUT chain (packets to host), {{c2::outgoing}} = OUTPUT chain (packets from host), {{c3::routed}} = FORWARD chain (packets forwarded through host).
+Helm packages related Kubernetes manifests into a {{c1::chart}} with templated values, making installs, upgrades, and {{c2::rollbacks}} a single operation.
+A Helm chart contains templated manifests, a {{c1::Chart.yaml}} with metadata, a {{c2::values.yaml}} with defaults, and optional {{c3::helpers}}.
+`helm upgrade --install` is {{c1::idempotent}} — it installs if the release is new, or {{c2::upgrades}} if it already exists.
+Helm stores release state as {{c1::Secrets}} (type `helm.sh/release.v1`) in the release's {{c2::namespace}}, one per revision.
+`helm template` renders chart templates {{c1::locally}} without installing — useful for debugging, reviewing YAML, or piping into {{c2::`kubectl apply`}}.
+`helm diff upgrade` shows a {{c1::diff}} of what would change without actually applying — essential for reviewing changes in {{c2::production}}.
+Kustomize uses {{c1::overlays}} and {{c2::patches}} to modify base YAML, while Helm uses {{c3::Go templates}} with values substitution.
+Kustomize bases hold {{c1::shared config}}, and overlays add {{c2::environment-specific}} patches (e.g., `overlays/dev/`, `overlays/prod/`).
+`kubectl apply -k <dir>` runs {{c1::Kustomize build}} on the directory, then {{c2::applies}} the result. `-f` applies {{c3::raw files}} directly.
+Imperative k8s management: `kubectl create`, `kubectl run`. Declarative: `kubectl apply -f` — you declare {{c1::desired state}} and k8s figures out the diff. {{c2::GitOps}} extends declarative with Git as the source of truth.
+Server-side apply (SSA) tracks {{c1::field ownership}} per manager, allowing multiple controllers to manage different fields of the same resource without {{c2::conflicts}}.
+`kubectl apply` does a {{c1::three-way merge}} (last-applied, desired, live). `kubectl replace` {{c2::deletes and recreates}} the entire resource from the manifest.
+Kubernetes {{c1::finalizers}} are metadata strings that prevent deletion until a {{c2::controller}} removes them — used for cleanup logic like volume deletion.
+`kubectl port-forward` tunnels a {{c1::local port}} to a {{c2::pod or service port}} inside the cluster — useful for accessing internal services without a LoadBalancer.
+`kubectl logs -f` {{c1::streams}} logs in real-time. Adding {{c2::`-p`}} shows logs from the {{c3::previous (crashed)}} container instance.
+`kubectl describe` is {{c1::human-readable}} with events inlined. `kubectl get -o yaml` shows the {{c2::raw API object}} for machine processing.
+`kubectl diff -f <file>` shows a diff between {{c1::live cluster state}} and the {{c2::local manifest}} without applying changes.
+`kubectl drain <node>` {{c1::cordons}} the node AND {{c2::evicts all pods}} respecting PodDisruptionBudgets. `kubectl cordon` only marks it {{c3::unschedulable}}.
+`kubectl taint` adds a taint to a node. Pods without a matching {{c1::toleration}} won't be scheduled there. The three effects are {{c2::NoSchedule}}, {{c3::PreferNoSchedule}}, and {{c4::NoExecute}}.
+`kubectl auth can-i <verb> <resource>` tests whether the current {{c1::user/ServiceAccount}} has {{c2::RBAC permission}} to perform an action.
+The {{c1::KUBECONFIG}} environment variable specifies one or more kubeconfig file paths ({{c2::colon-separated}}). kubectl {{c3::merges}} them automatically.
+`kubectl api-resources` lists all resource types including {{c1::CRDs}}, showing name, shortname, API group, and whether the resource is {{c2::namespaced}}.
+`kubectl explain <resource>.<field>` shows built-in {{c1::API documentation}} for any field — faster than browsing {{c2::online docs}}.
+Kubernetes {{c1::labels}} are for selection and filtering (used by selectors/Services), while {{c2::annotations}} store arbitrary metadata for tools and humans.
+Resource {{c1::requests}} are the guaranteed minimum used by the {{c2::scheduler}} for placement. Resource {{c3::limits}} are the maximum — exceeding them causes OOM kill (memory) or {{c4::throttling}} (CPU).
+The three QoS classes: {{c1::Guaranteed}} (requests == limits), {{c2::Burstable}} (requests < limits), {{c3::BestEffort}} (no requests/limits). Under memory pressure, {{c3}} pods are killed first.
+A {{c1::PodDisruptionBudget}} specifies the minimum pods that must remain available during voluntary disruptions like {{c2::drain}} or upgrades.
+`kubectl rollout undo deployment/<name>` rolls back to the {{c1::previous ReplicaSet}} revision. Add {{c2::`--to-revision=N`}} to target a specific version.
+ConfigMaps store {{c1::non-sensitive}} config, while Secrets store {{c2::sensitive}} data (base64-encoded) with slightly tighter {{c3::RBAC}} defaults. Both can be mounted as volumes or env vars.
